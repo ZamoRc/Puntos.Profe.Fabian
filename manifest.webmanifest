@@ -1,0 +1,12 @@
+{
+  "name": "Puntos de clase",
+  "short_name": "Puntos",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1d1250",
+  "theme_color": "#2a1b6e",
+  "icons": [
+    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
