@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0c2e1f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Puntos">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Puntos de clase</title>
+<style>
+:root{--bg:#0c2e1f;--card:#14452f;--card2:#1c6244;--line:#2f9467;--acc:#15803d;--acc2:#86efac;--tx:#fff;--mut:#bbf7d0;--ok:#4ade80;--bad:#f87171}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;border-bottom:1px solid var(--card)}
+header h1{font-size:22px;margin:0}
+main{padding:16px;max-width:560px;margin:0 auto}
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-weight:600;cursor:pointer;text-align:center}
+.btn.primary{background:var(--acc);border-color:var(--acc2)}
+.btn.danger{border-color:var(--bad);color:var(--bad);background:transparent}
+.btn.sm{padding:8px 10px;font-size:14px;border-radius:10px}
+.icon{width:42px;height:42px;padding:0;font-size:20px}
+.btn:active{transform:scale(.97)}
+.btn.on{background:var(--acc);border-color:#fff;box-shadow:0 0 0 2px var(--acc2)}
+input,select,textarea{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+textarea{min-height:160px}
+label{display:block;font-size:13px;color:var(--mut);margin:4px 0}
+.row{display:flex;gap:8px;margin-bottom:10px}
+.row>*{flex:1}
+.item{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:8px;cursor:pointer}
+.item small{color:var(--mut);display:block}
+.pts{font-size:22px;font-weight:800;color:var(--acc2)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.big{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;text-align:center;margin-bottom:14px}
+.big h2{margin:0 0 4px;font-size:26px}
+.big .n{font-size:56px;font-weight:900;color:var(--acc2);line-height:1.1}
+h3{margin:18px 0 8px;font-size:17px}
+.log{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--card);font-size:14px}
+.log small{color:var(--mut)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;font-size:13px;word-break:break-all;margin-bottom:8px}
+.muted{color:var(--mut);font-size:14px}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%) translateY(30px);background:#fff;color:#0c2e1f;padding:12px 18px;border-radius:999px;font-weight:700;opacity:0;transition:.25s;pointer-events:none;max-width:90%;text-align:center;z-index:20}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<main id="app"></main>
+<div id="toast"></div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script>
+const KEY='puntos-clase-v1';
+const CATS=['Trabajo en clases','Responsabilidad','Convivencia','Participación','Esfuerzo','Ayuda a otros','Actividad completada','Otra categoría'];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
+const $=id=>document.getElementById(id);
+
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&Array.isArray(d.students))return d}catch(e){}return{students:[]}}
+let db=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('No se pudo guardar')}}
+const total=s=>s.log.reduce((a,l)=>a+l.p,0);
+const find=id=>db.students.find(s=>s.id===id);
+const cardURL=id=>location.origin+location.pathname+'#/e/'+id;
+
+const DESC=['Canje de premio','Sanción','Otro motivo'];
+let S={view:'list',id:null,editId:null,cat:null,pts:1,dcat:null,dpts:1,q:'',course:'',sort:'az'};
+let tt;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200)}
+function go(v){S.view=v;if(v==='student'){S.cat=null;S.pts=1;S.dcat=null;S.dpts=1}render();window.scrollTo(0,0)}
+function fmt(t){const d=new Date(t);return d.toLocaleDateString('es-CL',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})}
+
+function header(title,left){
+  $('hdr').innerHTML=(left?`<button class="btn icon" data-act="back">←</button>`:'<span style="width:42px"></span>')+`<h1>${title}</h1>`+(S.view==='list'?`<button class="btn icon" data-act="menu">☰</button>`:'<span style="width:42px"></span>');
+}
+
+function itemsHTML(){
+  let l=db.students.slice();
+  const q=S.q.trim().toLowerCase();
+  if(q)l=l.filter(s=>s.name.toLowerCase().includes(q));
+  if(S.course)l=l.filter(s=>s.course===S.course);
+  l.sort(S.sort==='pts'?(a,b)=>total(b)-total(a)||a.name.localeCompare(b.name):(a,b)=>a.name.localeCompare(b.name));
+  if(!l.length)return `<p class="muted">${db.students.length?'Sin resultados.':'Aún no hay estudiantes. Agrega el primero o varios a la vez desde el menú ☰.'}</p>`;
+  return l.map(s=>`<div class="item" data-act="open" data-id="${s.id}"><div>${esc(s.name)}<small>${esc(s.course||'Sin curso')}</small></div><div class="pts">${total(s)}</div></div>`).join('');
+}
+
+function vList(){
+  header('Puntos 💚',false);
+  const courses=[...new Set(db.students.map(s=>s.course).filter(Boolean))].sort();
+  $('app').innerHTML=`
+  <div class="row"><button class="btn primary" data-act="new">+ Estudiante</button><button class="btn" data-act="sort">${S.sort==='az'?'Orden: A-Z':'Orden: puntos'}</button></div>
+  <input id="q" type="search" placeholder="Buscar estudiante" value="${esc(S.q)}">
+  ${courses.length?`<select id="course"><option value="">Todos los cursos</option>${courses.map(c=>`<option ${c===S.course?'selected':''}>${esc(c)}</option>`).join('')}</select>`:''}
+  <div id="items">${itemsHTML()}</div>`;
+}
+
+function vStudent(){
+  const s=find(S.id);
+  if(!s){go('list');return}
+  header('Perfil',true);
+  const hist=s.log.map((l,i)=>({l,i})).reverse().slice(0,30);
+  $('app').innerHTML=`
+  <div class="big"><h2>${esc(s.name)}</h2><div class="muted">${esc(s.course||'Sin curso')} · ${s.log.length} asignaciones</div><div class="n">${total(s)}</div><div class="muted">puntos</div></div>
+  <h3>1. Categoría</h3>
+  <div class="grid">${CATS.map(c=>`<button class="btn cat ${c===S.cat?'on':''}" data-act="cat" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+  <h3>2. Puntos a entregar</h3>
+  <div class="row">${[1,2,3].map(n=>`<button class="btn pt ${n===S.pts?'on':''}" data-act="pts" data-v="${n}">+${n}<br><small>${n===1?'punto':'puntos'}</small></button>`).join('')}</div>
+  <button class="btn primary" style="width:100%;margin-bottom:8px" data-act="confirm">✓ Confirmar asignación</button>
+  <button class="btn sm" style="width:100%" data-act="undo">Deshacer la última</button>
+  <h3>Descontar puntos</h3>
+  <div class="row">${DESC.map(c=>`<button class="btn sm dcat ${c===S.dcat?'on':''}" data-act="dcat" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+  <div class="row">${[1,2,3,5,10].map(n=>`<button class="btn sm dpt ${n===S.dpts?'on':''}" data-act="dpts" data-v="${n}">−${n}</button>`).join('')}</div>
+  <button class="btn danger" style="width:100%" data-act="discount">− Confirmar descuento</button>
+  <h3>Historial</h3>
+  ${hist.length?hist.map(({l,i})=>`<div class="log"><div>${esc(l.c)}<br><small>${fmt(l.t)}</small></div><div><b style="color:${l.p<0?'var(--bad)':'var(--ok)'}">${l.p>0?'+':'−'}${Math.abs(l.p)}</b> <button class="btn sm" data-act="dellog" data-i="${i}">✕</button></div></div>`).join(''):'<p class="muted">Sin asignaciones todavía.</p>'}
+  <h3>Enlace para la tarjeta NFC</h3>
+  <div class="box">${esc(cardURL(s.id))}</div>
+  <div class="row"><button class="btn sm" data-act="copy">Copiar enlace</button><button class="btn sm" data-act="share">Compartir</button></div>
+  <div class="row" style="margin-top:14px"><button class="btn sm" data-act="edit">Editar</button><button class="btn danger sm" data-act="delstudent">Eliminar</button></div>`;
+}
+
+function vForm(){
+  const s=S.editId?find(S.editId):null;
+  header(s?'Editar estudiante':'Nuevo estudiante',true);
+  $('app').innerHTML=`<label>Nombre</label><input id="fname" value="${s?esc(s.name):''}" placeholder="Nombre y apellido">
+  <label>Curso</label><input id="fcourse" value="${s?esc(s.course||''):''}" placeholder="Ej: 4° básico A">
+  <button class="btn primary" style="width:100%" data-act="saveform">Guardar</button>`;
+}
+
+function vBulk(){
+  header('Agregar varios',true);
+  $('app').innerHTML=`<p class="muted">Pega la lista de estudiantes, uno por línea.</p>
+  <label>Curso</label><input id="bcourse" placeholder="Ej: 4° básico A">
+  <label>Nombres</label><textarea id="bnames" placeholder="Francisco Morales&#10;Ana Pérez"></textarea>
+  <button class="btn primary" style="width:100%" data-act="savebulk">Agregar</button>`;
+}
+
+function vMenu(){
+  header('Menú',true);
+  $('app').innerHTML=`
+  <div class="grid" style="grid-template-columns:1fr">
+  <button class="btn" data-act="bulk">Agregar varios estudiantes</button>
+  <button class="btn" data-act="scan">Leer tarjeta NFC (solo Android)</button>
+  <button class="btn" data-act="export">Guardar respaldo (archivo JSON)</button>
+  <button class="btn" data-act="import">Restaurar respaldo</button>
+  <button class="btn" data-act="exportcsv">Exportar resumen (CSV para Excel)</button>
+  <button class="btn danger" data-act="wipe">Borrar todos los datos</button></div>
+  <p class="muted">${db.students.length} estudiantes · los datos se guardan solo en este teléfono. Haz un respaldo cada cierto tiempo.</p>`;
+}
+
+function render(){({list:vList,student:vStudent,form:vForm,bulk:vBulk,menu:vMenu})[S.view]()}
+
+function dl(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}
+function today(){return new Date().toISOString().slice(0,10)}
+
+function openStudent(id){
+  if(!find(id)){toast('Tarjeta no registrada en este teléfono');return}
+  S.id=id;S.cat=null;S.pts=1;go('student');
+}
+
+const ACT={
+  open:el=>{S.id=el.dataset.id;S.cat=null;S.pts=1;go('student')},
+  back:()=>{history.replaceState(null,'',location.pathname+location.search);go(S.view==='form'&&S.editId?'student':'list')},
+  menu:()=>go('menu'),
+  new:()=>{S.editId=null;go('form')},
+  edit:()=>{S.editId=S.id;go('form')},
+  bulk:()=>go('bulk'),
+  sort:()=>{S.sort=S.sort==='az'?'pts':'az';render()},
+  cat:el=>{S.cat=el.dataset.v;document.querySelectorAll('.cat').forEach(b=>b.classList.toggle('on',b===el))},
+  pts:el=>{S.pts=+el.dataset.v;document.querySelectorAll('.pt').forEach(b=>b.classList.toggle('on',b===el))},
+  dcat:el=>{S.dcat=el.dataset.v;document.querySelectorAll('.dcat').forEach(b=>b.classList.toggle('on',b===el))},
+  dpts:el=>{S.dpts=+el.dataset.v;document.querySelectorAll('.dpt').forEach(b=>b.classList.toggle('on',b===el))},
+  discount:()=>{
+    const s=find(S.id);if(!s)return;
+    if(!S.dcat){toast('Elige un motivo');return}
+    if(total(s)-S.dpts<0){toast(`Solo tiene ${total(s)} puntos`);return}
+    if(!confirm(`¿Descontar ${S.dpts} puntos a ${s.name} por "${S.dcat}"?`))return;
+    s.log.push({t:Date.now(),c:S.dcat,p:-S.dpts});save();
+    toast(`−${S.dpts} para ${s.name.split(' ')[0]}`);
+    S.dcat=null;S.dpts=1;render();
+  },
+  confirm:()=>{
+    const s=find(S.id);if(!s)return;
+    if(!S.cat){toast('Elige una categoría');return}
+    s.log.push({t:Date.now(),c:S.cat,p:S.pts});save();
+    toast(`+${S.pts} para ${s.name.split(' ')[0]} ✓`);
+    S.cat=null;S.pts=1;render();
+  },
+  undo:()=>{const s=find(S.id);if(!s||!s.log.length)return;const l=s.log.pop();save();toast(`Se quitó +${l.p}`);render()},
+  dellog:el=>{const s=find(S.id);if(!s)return;if(confirm('¿Quitar esta asignación?')){s.log.splice(+el.dataset.i,1);save();render()}},
+  copy:async()=>{try{await navigator.clipboard.writeText(cardURL(S.id));toast('Enlace copiado')}catch(e){toast('Mantén presionado el enlace para copiarlo')}},
+  share:async()=>{try{if(navigator.share)await navigator.share({title:'Tarjeta de puntos',url:cardURL(S.id)});else ACT.copy()}catch(e){}},
+  saveform:()=>{
+    const name=$('fname').value.trim(),course=$('fcourse').value.trim();
+    if(!name){toast('Escribe un nombre');return}
+    if(S.editId){const s=find(S.editId);s.name=name;s.course=course;S.id=S.editId;save();go('student')}
+    else{const s={id:uid(),name,course,log:[]};db.students.push(s);save();S.id=s.id;S.cat=null;S.pts=1;toast('Estudiante creado');go('student')}
+  },
+  savebulk:()=>{
+    const course=$('bcourse').value.trim();
+    const names=$('bnames').value.split('\n').map(x=>x.trim()).filter(Boolean);
+    if(!names.length){toast('Pega al menos un nombre');return}
+    names.forEach(n=>db.students.push({id:uid(),name:n,course,log:[]}));save();
+    toast(names.length+' estudiantes agregados');go('list');
+  },
+  delstudent:()=>{const s=find(S.id);if(s&&confirm(`¿Eliminar a ${s.name} y todos sus puntos?`)){db.students=db.students.filter(x=>x.id!==s.id);save();history.replaceState(null,'',location.pathname);go('list')}},
+  export:()=>dl(`respaldo-puntos-${today()}.json`,JSON.stringify(db,null,1),'application/json'),
+  exportcsv:()=>{
+    const rows=[['Nombre','Curso','Puntos','Asignaciones']].concat(db.students.map(s=>[s.name,s.course||'',total(s),s.log.length]));
+    dl(`puntos-${today()}.csv`,'\ufeff'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n'),'text/csv');
+  },
+  import:()=>$('file').click(),
+  wipe:()=>{if(confirm('Esto borra todos los estudiantes y puntos de este teléfono. ¿Continuar?')&&confirm('¿Seguro? No se puede deshacer.')){db={students:[]};save();go('list')}},
+  scan:async()=>{
+    if(!('NDEFReader' in window)){toast('Este navegador no lee NFC. En iPhone, acerca la tarjeta a la parte superior del teléfono.');return}
+    try{
+      const r=new NDEFReader();await r.scan();toast('Acerca una tarjeta…');
+      r.onreading=e=>{for(const rec of e.message.records){try{const txt=new TextDecoder(rec.encoding||'utf-8').decode(rec.data);const m=txt.match(/#\/e\/([a-z0-9]+)/i);if(m){openStudent(m[1]);return}}catch(x){}}toast('Tarjeta no reconocida')};
+    }catch(e){toast('NFC no disponible: '+e.message)}
+  }
+};
+
+document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(el&&ACT[el.dataset.act])ACT[el.dataset.act](el)});
+document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;$('items').innerHTML=itemsHTML()}});
+document.addEventListener('change',e=>{if(e.target.id==='course'){S.course=e.target.value;$('items').innerHTML=itemsHTML()}});
+$('file').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{
+    const d=JSON.parse(await f.text());
+    if(!d||!Array.isArray(d.students))throw 0;
+    let n=0;
+    d.students.forEach(s=>{if(!s.id||!s.name||!Array.isArray(s.log))return;const i=db.students.findIndex(x=>x.id===s.id);if(i>=0)db.students[i]=s;else db.students.push(s);n++});
+    save();toast(n+' estudiantes restaurados');go('list');
+  }catch(x){toast('El archivo no es un respaldo válido')}
+});
+
+function route(){
+  const m=location.hash.match(/^#\/e\/([a-z0-9]+)/i);
+  if(m)openStudent(m[1]);
+}
+window.addEventListener('hashchange',route);
+
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+render();route();
+</script>
+</body>
+</html>
